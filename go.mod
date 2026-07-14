@@ -1,3 +1,3 @@
-module github.com/chmouel/pac-demo
+module github.com/ivangonzalezacuna/tekton-spike
 
-go 1.19
+go 1.26
