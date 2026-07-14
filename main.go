@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// const unused = `unusedstr`
+const unused = `unusedstr`
 
 func main() {
 	fmt.Fprintf(os.Stdout, "Hello world")
