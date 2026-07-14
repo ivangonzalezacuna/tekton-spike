@@ -1,9 +1,12 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
-const unused = `unusedstr`
+// const unused = `unusedstr`
 
 func main() {
-	fmt.Println("Hello world")
+	fmt.Fprintf(os.Stdout, "Hello world")
 }
