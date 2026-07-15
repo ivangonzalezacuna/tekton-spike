@@ -1,0 +1,32 @@
+# Persistent volume backing both the `source` and `go-build-cache`
+# PipelineRun workspaces (see pipelinerun.yaml), split via subPath.
+#
+# PipelineRun workspaces backed by `volumeClaimTemplate` create a brand new PVC
+# per run and are deleted afterwards, so they can't hold a build cache. This
+# PVC has a stable name and is created once (kubectl apply -f), then
+# referenced by claimName from every PipelineRun so GOCACHE/GOMODCACHE survive
+# across runs and PRs.
+#
+# Both workspaces share this single claim (rather than each getting their own
+# PVC) because Tekton's affinity assistant refuses to bind two different
+# PVC-backed workspaces into the same TaskRun pod ("more than one
+# PersistentVolumeClaim is bound"). Source checkouts persisting on disk
+# between runs is harmless since git-clone overwrites them fresh every time.
+#
+# Access mode: ReadWriteOnce is enough while builds run one at a time.
+# Tekton's affinity assistant pins concurrent PipelineRuns that share this
+# workspace to the same node, which keeps a RWO volume working but serializes
+# those builds. Once build concurrency/throughput matters, move to a
+# ReadWriteMany-capable StorageClass (e.g. NFS/EFS-backed) so parallel
+# PipelineRuns can mount it on different nodes at once, and disable/relax the
+# affinity assistant accordingly.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: go-build-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

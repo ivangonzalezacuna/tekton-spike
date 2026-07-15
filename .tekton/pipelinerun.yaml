@@ -41,6 +41,7 @@ spec:
     workspaces:
       - name: source
       - name: basic-auth
+      - name: go-build-cache
     tasks:
       - name: fetch-repository
         taskRef:
@@ -66,18 +67,52 @@ spec:
         workspaces:
           - name: source
             workspace: source
+      - name: build-binary
+        runAfter:
+          - golangci-lint
+        taskSpec:
+          workspaces:
+            - name: source
+            - name: go-build-cache
+          steps:
+            - name: go-build
+              image: golang:1.26
+              workingDir: $(workspaces.source.path)
+              env:
+                - name: GOCACHE
+                  value: $(workspaces.go-build-cache.path)/go-build
+                - name: GOMODCACHE
+                  value: $(workspaces.go-build-cache.path)/go-mod
+              script: |
+                #!/bin/sh
+                set -eu
+                go build -o bin/tekton-spike .
+        workspaces:
+          - name: source
+            workspace: source
+          - name: go-build-cache
+            workspace: go-build-cache
 
   workspaces:
+    # `source` and `go-build-cache` are bound to the SAME pre-created PVC
+    # (see go-build-cache-pvc.yaml), split via subPath. Tekton's affinity
+    # assistant rejects a TaskRun that binds two *different* PVC-backed
+    # workspaces at once ("more than one PersistentVolumeClaim is bound"),
+    # so using one claim for both avoids that limitation while still giving
+    # the build task a warm Go build/module cache across runs. The tradeoff:
+    # source checkouts persist on disk between runs instead of starting from
+    # an empty volume, which is harmless since git-clone overwrites it fresh
+    # every time.
     - name: source
-      volumeClaimTemplate:
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 1Gi
+      persistentVolumeClaim:
+        claimName: go-build-cache
+      subPath: src
     # This workspace will inject secret to help the git-clone task to be able to
     # checkout the private repositories
     - name: basic-auth
       secret:
         secretName: "{{ git_auth_secret }}"
+    - name: go-build-cache
+      persistentVolumeClaim:
+        claimName: go-build-cache
+      subPath: cache
