@@ -38,10 +38,17 @@ spec:
     params:
       - name: repo_url
       - name: revision
+    # Only one PVC-backed pipeline workspace ("source") on purpose: giving
+    # `go-build-cache` its own top-level workspace entry (even bound to the
+    # same underlying claim) makes Tekton's affinity-assistant hashing
+    # inconsistent across tasks that reference different subsets of
+    # PVC-backed workspaces, which can desync the assistant pod's identity
+    # from what a TaskRun pod requires ("didn't match pod affinity rules").
+    # Source vs. cache separation is done with a task-level `subPath`
+    # instead (see the tasks below).
     workspaces:
       - name: source
       - name: basic-auth
-      - name: go-build-cache
     tasks:
       - name: fetch-repository
         taskRef:
@@ -49,6 +56,7 @@ spec:
         workspaces:
           - name: output
             workspace: source
+            subPath: src
           - name: basic-auth
             workspace: basic-auth
         params:
@@ -67,6 +75,7 @@ spec:
         workspaces:
           - name: source
             workspace: source
+            subPath: src
       - name: build-binary
         runAfter:
           - golangci-lint
@@ -90,29 +99,20 @@ spec:
         workspaces:
           - name: source
             workspace: source
+            subPath: src
           - name: go-build-cache
-            workspace: go-build-cache
+            workspace: source
+            subPath: cache
 
   workspaces:
-    # `source` and `go-build-cache` are bound to the SAME pre-created PVC
-    # (see go-build-cache-pvc.yaml), split via subPath. Tekton's affinity
-    # assistant rejects a TaskRun that binds two *different* PVC-backed
-    # workspaces at once ("more than one PersistentVolumeClaim is bound"),
-    # so using one claim for both avoids that limitation while still giving
-    # the build task a warm Go build/module cache across runs. The tradeoff:
-    # source checkouts persist on disk between runs instead of starting from
-    # an empty volume, which is harmless since git-clone overwrites it fresh
-    # every time.
+    # Bound to the pre-created go-build-cache PVC (see go-build-cache-pvc.yaml).
+    # Tasks split it into `src`/`cache` subdirectories via task-level subPath
+    # above, so the pipeline only ever references one PVC-backed workspace.
     - name: source
       persistentVolumeClaim:
         claimName: go-build-cache
-      subPath: src
     # This workspace will inject secret to help the git-clone task to be able to
     # checkout the private repositories
     - name: basic-auth
       secret:
         secretName: "{{ git_auth_secret }}"
-    - name: go-build-cache
-      persistentVolumeClaim:
-        claimName: go-build-cache
-      subPath: cache
