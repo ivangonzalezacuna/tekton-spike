@@ -95,7 +95,11 @@ spec:
               script: |
                 #!/bin/sh
                 set -eu
-                go build -o bin/tekton-spike .
+                # -buildvcs=false: the container reading the checkout isn't
+                # the one that cloned it, so `go build`'s VCS auto-stamping
+                # (git status) fails with git's dubious-ownership check.
+                # The binary doesn't need embedded commit metadata here.
+                go build -buildvcs=false -o bin/tekton-spike .
         workspaces:
           - name: source
             workspace: source
